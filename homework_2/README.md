@@ -51,37 +51,38 @@ db.inventory.insertMany([
 5. Подсчет количества товаров по наименованию (сумма с разных складов)
    через Map Reduce
 ```js
-// map for inventory
-function mapInventory() {
-  emit(this.productId, { qty: this.qty});
-}
-
-// map for products
-function mapProducts() {
-  emit(this._id, { name: this.name});
-}
-
-function reduceJoin(key, values) {
-    var results = {};
-	var totalQty = null;
-	values.forEach(function(value) {
-	  if (value.qty !== undefined) totalQty += value.qty;
-	  if (value.name !== undefined) results["name"] = value.name;
-	});
-	if (totalQty !== null) results["qty"] = totalQty;
-	return results;
-}
+var productsMap = {};
+db.products.find().forEach(function(p) {
+  productsMap[p._id] = p.name;
+});
 ```
+![img.png](img/img_5.png)
 
 ```js
-db.products.mapReduce(mapProducts, reduceJoin,{out:"joined"});
-```
-![img_2.png](img/img_2.png)
+var mapFunction = function() {
+  emit(this.productId, { name: productsMap[this.productId], qty: this.qty });
+};
 
-```js
-db.inventory.mapReduce(mapInventory, reduceJoin,{out:"joined"});
+var reduceFunction = function(key, values) {
+  var total = 0;
+  var name = "";
+  values.forEach(function(v) {
+    total += v.qty;
+    name = name || v.name;
+  });
+  return { name: name, qty: total };
+};
+
+db.inventory.mapReduce(
+  mapFunction,
+  reduceFunction,
+  {
+    out: "stock_totals",
+    scope: { productsMap: productsMap }
+  }
+);
 ```
-![img_3.png](img/img_3.png)
+![img.png](img/img_6.png)
 
 6. Подсчет количества товаров по наименованию (сумма с разных складов)
    через Aggregation Framework
